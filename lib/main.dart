@@ -22,6 +22,60 @@ void main() {
   runApp(const MyApp());
 }
 
+class SmartBridgeLogo extends StatelessWidget {
+  const SmartBridgeLogo({
+    super.key,
+    this.size = 38,
+    this.backgroundColor,
+    this.borderColor,
+  });
+
+  final double size;
+  final Color? backgroundColor;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * 0.14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        color: backgroundColor ?? scheme.primaryContainer,
+        border: Border.all(
+          color: borderColor ?? scheme.primary.withValues(alpha: 0.45),
+          width: 1.1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.18),
+        child: Image.asset(
+          'smartbridge.png',
+          fit: BoxFit.cover,
+          errorBuilder:
+              (BuildContext context, Object error, StackTrace? stackTrace) {
+                return Icon(
+                  Icons.sign_language,
+                  size: size * 0.5,
+                  color: scheme.primary,
+                );
+              },
+        ),
+      ),
+    );
+  }
+}
+
 @immutable
 class AppUiPreferences {
   const AppUiPreferences({
@@ -189,6 +243,31 @@ class _MyAppState extends State<MyApp> {
       brightness: brightness,
     );
 
+    scheme = scheme.copyWith(
+      primary: brightness == Brightness.dark
+          ? const Color(0xFF44D9D1)
+          : const Color(0xFF006F69),
+      onPrimary: Colors.white,
+      surface: brightness == Brightness.dark
+          ? const Color(0xFF0E1416)
+          : const Color(0xFFF8FBFC),
+      onSurface: brightness == Brightness.dark
+          ? const Color(0xFFF2F7F8)
+          : const Color(0xFF0E2325),
+      surfaceContainerHighest: brightness == Brightness.dark
+          ? const Color(0xFF213237)
+          : const Color(0xFFDDECEF),
+      onSurfaceVariant: brightness == Brightness.dark
+          ? const Color(0xFFC2D4D8)
+          : const Color(0xFF315258),
+      outline: brightness == Brightness.dark
+          ? const Color(0xFF638086)
+          : const Color(0xFF5B7B81),
+      outlineVariant: brightness == Brightness.dark
+          ? const Color(0xFF375158)
+          : const Color(0xFFB1C7CB),
+    );
+
     if (_prefs.highContrast) {
       scheme = scheme.copyWith(
         primary: brightness == Brightness.dark
@@ -196,7 +275,7 @@ class _MyAppState extends State<MyApp> {
             : const Color(0xFF005A56),
         onPrimary: Colors.white,
         surface: brightness == Brightness.dark
-            ? const Color(0xFF111717)
+            ? const Color(0xFF101418)
             : Colors.white,
         onSurface: brightness == Brightness.dark ? Colors.white : Colors.black,
       );
@@ -211,21 +290,23 @@ class _MyAppState extends State<MyApp> {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: scheme.outlineVariant),
+          side: BorderSide(color: scheme.outlineVariant, width: 1.2),
         ),
       ),
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
       ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
         backgroundColor: scheme.surface,
+        indicatorColor: scheme.primaryContainer,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.72),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.outlineVariant),
@@ -236,14 +317,11 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData lightTheme = _buildTheme(Brightness.light);
-    final ThemeData darkTheme = _buildTheme(Brightness.dark);
-
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'SmartBridge',
-      theme: lightTheme,
-      darkTheme: darkTheme,
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       themeMode: _prefs.themeMode,
       builder: (BuildContext context, Widget? child) {
         final MediaQueryData mediaQuery = MediaQuery.of(context);
@@ -407,30 +485,45 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     required String body,
     Widget? footer,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 12),
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(18),
+              color: scheme.primaryContainer,
+              border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
             ),
-            child: Icon(icon, size: 26),
+            child: Icon(icon, size: 28, color: scheme.onPrimaryContainer),
           ),
           const SizedBox(height: 22),
           Text(
             title,
-            style: Theme.of(
-              context,
-            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: scheme.onSurface,
+            ),
           ),
           const SizedBox(height: 12),
-          Text(body, style: Theme.of(context).textTheme.bodyLarge),
-          if (footer != null) ...[const SizedBox(height: 22), footer],
+          Text(
+            body,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          if (footer != null) ...[
+            const SizedBox(height: 20),
+            Expanded(
+              child: Align(alignment: Alignment.topLeft, child: footer),
+            ),
+          ],
         ],
       ),
     );
@@ -441,100 +534,169 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     final ColorScheme scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (int value) => setState(() => _page = value),
-                children: [
-                  _buildSlide(
-                    icon: Icons.waving_hand_rounded,
-                    title: 'Welcome to SmartBridge',
-                    body:
-                        'Translate hand signs, speech, and text in one place. '
-                        'Swipe to learn core app features before you begin.',
-                  ),
-                  _buildSlide(
-                    icon: Icons.translate,
-                    title: 'Live Translation Tools',
-                    body:
-                        'Use camera-powered sign recognition, speech-to-text, '
-                        'and text-to-speech from a single minimal interface.',
-                  ),
-                  _buildSlide(
-                    icon: Icons.accessibility_new,
-                    title: 'Accessibility First',
-                    body:
-                        'Adjust text size, contrast, motion, and haptic feedback '
-                        'to match your preferred interaction style.',
-                  ),
-                  _buildSlide(
-                    icon: Icons.gavel_rounded,
-                    title: 'Terms and Conditions',
-                    body:
-                        'SmartBridge assists communication and does not replace '
-                        'professional interpretation in medical, legal, or '
-                        'emergency situations. You are responsible for safe and '
-                        'lawful use of camera, microphone, and generated output.',
-                    footer: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: scheme.surfaceContainerHighest.withValues(
-                          alpha: 0.55,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              scheme.primaryContainer.withValues(alpha: 0.55),
+              scheme.surface,
+              scheme.surface,
+            ],
+            stops: const [0.0, 0.35, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                child: Card(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                        child: Row(
+                          children: [
+                            SmartBridgeLogo(
+                              size: 44,
+                              backgroundColor: scheme.surface,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'SmartBridge',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(fontWeight: FontWeight.w800),
+                                  ),
+                                  Text(
+                                    'Guided setup and quick orientation',
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text(
-                          'I agree to the Terms and Conditions',
+                      const Divider(height: 1),
+                      Expanded(
+                        child: PageView(
+                          controller: _pageController,
+                          onPageChanged: (int value) =>
+                              setState(() => _page = value),
+                          children: [
+                            _buildSlide(
+                              icon: Icons.waving_hand_rounded,
+                              title: 'Welcome to SmartBridge',
+                              body:
+                                  'Translate hand signs, speech, and text in one place. '
+                                  'Swipe to learn core app features before you begin.',
+                            ),
+                            _buildSlide(
+                              icon: Icons.translate,
+                              title: 'Live Translation Tools',
+                              body:
+                                  'Use camera-powered sign recognition, speech-to-text, '
+                                  'and text-to-speech from a single minimal interface.',
+                            ),
+                            _buildSlide(
+                              icon: Icons.accessibility_new,
+                              title: 'Accessibility First',
+                              body:
+                                  'Adjust text size, contrast, motion, and haptic feedback '
+                                  'to match your preferred interaction style.',
+                            ),
+                            _buildSlide(
+                              icon: Icons.gavel_rounded,
+                              title: 'Terms and Conditions',
+                              body:
+                                  'SmartBridge assists communication and does not replace '
+                                  'professional interpretation in medical, legal, or '
+                                  'emergency situations. You are responsible for safe and '
+                                  'lawful use of camera, microphone, and generated output.',
+                              footer: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: scheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.78),
+                                  border: Border.all(
+                                    color: scheme.outlineVariant,
+                                  ),
+                                ),
+                                child: CheckboxListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: const Text(
+                                    'I agree to the Terms and Conditions',
+                                  ),
+                                  value: _agreed,
+                                  onChanged: (bool? value) {
+                                    setState(() => _agreed = value ?? false);
+                                  },
+                                  controlAffinity:
+                                      ListTileControlAffinity.leading,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        value: _agreed,
-                        onChanged: (bool? value) {
-                          setState(() => _agreed = value ?? false);
-                        },
-                        controlAffinity: ListTileControlAffinity.leading,
                       ),
-                    ),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            for (int i = 0; i < 4; i++)
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                margin: const EdgeInsets.only(right: 6),
+                                width: i == _page ? 20 : 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  color: i == _page
+                                      ? scheme.primary
+                                      : scheme.outlineVariant.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                ),
+                              ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: _page == 0 ? null : _back,
+                              child: const Text('Back'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: (_page == 3 && !_agreed) || _submitting
+                                  ? null
+                                  : _next,
+                              child: Text(_page == 3 ? 'Enter App' : 'Next'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              child: Row(
-                children: [
-                  for (int i = 0; i < 4; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      margin: const EdgeInsets.only(right: 6),
-                      width: i == _page ? 20 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        color: i == _page
-                            ? scheme.primary
-                            : scheme.outlineVariant.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _page == 0 ? null : _back,
-                    child: const Text('Back'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: (_page == 3 && !_agreed) || _submitting
-                        ? null
-                        : _next,
-                    child: Text(_page == 3 ? 'Enter App' : 'Next'),
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -556,6 +718,8 @@ class SmartBridgeShell extends StatefulWidget {
 }
 
 class _SmartBridgeShellState extends State<SmartBridgeShell> {
+  static const double _maxContentWidth = 940;
+
   final PageController _pageController = PageController();
   final List<HistoryItem> _history = <HistoryItem>[];
 
@@ -592,11 +756,50 @@ class _SmartBridgeShellState extends State<SmartBridgeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    final List<Widget> pages = [
+      TranslatorPage(prefs: widget.prefs, onAddHistory: _onAddHistory),
+      HistoryPage(history: _history, onClearHistory: _onClearHistory),
+      SettingsPage(
+        prefs: widget.prefs,
+        onPreferencesChanged: widget.onPreferencesChanged,
+        onClearHistory: _onClearHistory,
+      ),
+      const AboutPage(),
+    ];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _titles[_currentIndex],
-          style: const TextStyle(fontWeight: FontWeight.w700),
+        title: Row(
+          children: [
+            SmartBridgeLogo(
+              size: 34,
+              backgroundColor: scheme.surface,
+              borderColor: scheme.outlineVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'SmartBridge',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                  ),
+                  Text(
+                    _titles[_currentIndex],
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -618,41 +821,59 @@ class _SmartBridgeShellState extends State<SmartBridgeShell> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Swipe left or right to switch pages quickly.',
-                style: Theme.of(context).textTheme.bodySmall,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              scheme.primaryContainer.withValues(alpha: 0.18),
+              scheme.surface,
+            ],
+          ),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Align(
+                alignment: Alignment.center,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: _maxContentWidth),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Swipe left or right to switch pages quickly.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              onPageChanged: (int value) {
-                setState(() => _currentIndex = value);
-              },
-              children: [
-                TranslatorPage(
-                  prefs: widget.prefs,
-                  onAddHistory: _onAddHistory,
-                ),
-                HistoryPage(history: _history, onClearHistory: _onClearHistory),
-                SettingsPage(
-                  prefs: widget.prefs,
-                  onPreferencesChanged: widget.onPreferencesChanged,
-                  onClearHistory: _onClearHistory,
-                ),
-                const AboutPage(),
-              ],
+            const SizedBox(height: 8),
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (int value) {
+                  setState(() => _currentIndex = value);
+                },
+                children: pages
+                    .map(
+                      (Widget page) => Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: _maxContentWidth,
+                          ),
+                          child: page,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
@@ -1119,6 +1340,20 @@ class _TranslatorPageState extends State<TranslatorPage>
     );
   }
 
+  double _cameraAspectRatio() {
+    final CameraController? controller = _cameraService.cameraController;
+    if (controller == null || !controller.value.isInitialized) {
+      return 4 / 3;
+    }
+
+    final double ratio = controller.value.aspectRatio;
+    if (!ratio.isFinite || ratio <= 0) {
+      return 4 / 3;
+    }
+
+    return ratio.clamp(0.75, 1.65);
+  }
+
   Widget _buildMicPulse() {
     if (!_isListening || !_motionEnabled) {
       return const SizedBox.shrink();
@@ -1203,9 +1438,11 @@ class _TranslatorPageState extends State<TranslatorPage>
     } else {
       content = Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: CameraPreview(_cameraService.cameraController!),
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CameraPreview(_cameraService.cameraController!),
+            ),
           ),
           Positioned(
             bottom: 0,
@@ -1235,42 +1472,115 @@ class _TranslatorPageState extends State<TranslatorPage>
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.videocam_outlined),
-                const SizedBox(width: 8),
-                const Text(
-                  'Sign Recognition',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: _isCameraRunning ? 'Stop camera' : 'Start camera',
-                  onPressed: _isCameraRunning ? _stopCamera : _startCamera,
-                  icon: Icon(
-                    _isCameraRunning
-                        ? Icons.stop_circle_outlined
-                        : Icons.play_circle_outline,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Switch camera',
-                  onPressed: _switchCamera,
-                  icon: const Icon(Icons.cameraswitch_outlined),
-                ),
-                IconButton(
-                  tooltip: 'Snapshot',
-                  onPressed: _captureSnapshot,
-                  icon: const Icon(Icons.photo_camera_outlined),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool compact = constraints.maxWidth < 640;
+
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.videocam_outlined),
+                          SizedBox(width: 8),
+                          Text(
+                            'Sign Recognition',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: _isCameraRunning
+                                ? 'Stop camera'
+                                : 'Start camera',
+                            onPressed: _isCameraRunning
+                                ? _stopCamera
+                                : _startCamera,
+                            icon: Icon(
+                              _isCameraRunning
+                                  ? Icons.stop_circle_outlined
+                                  : Icons.play_circle_outline,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Switch camera',
+                            onPressed: _switchCamera,
+                            icon: const Icon(Icons.cameraswitch_outlined),
+                          ),
+                          IconButton(
+                            tooltip: 'Snapshot',
+                            onPressed: _captureSnapshot,
+                            icon: const Icon(Icons.photo_camera_outlined),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    const Icon(Icons.videocam_outlined),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Sign Recognition',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: _isCameraRunning
+                          ? 'Stop camera'
+                          : 'Start camera',
+                      onPressed: _isCameraRunning ? _stopCamera : _startCamera,
+                      icon: Icon(
+                        _isCameraRunning
+                            ? Icons.stop_circle_outlined
+                            : Icons.play_circle_outline,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Switch camera',
+                      onPressed: _switchCamera,
+                      icon: const Icon(Icons.cameraswitch_outlined),
+                    ),
+                    IconButton(
+                      tooltip: 'Snapshot',
+                      onPressed: _captureSnapshot,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 8),
-            SizedBox(height: 220, width: double.infinity, child: content),
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double previewHeight =
+                    (constraints.maxWidth / _cameraAspectRatio()).clamp(
+                      220.0,
+                      370.0,
+                    );
+
+                return Container(
+                  width: double.infinity,
+                  height: previewHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: scheme.outlineVariant),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: content,
+                );
+              },
+            ),
             const SizedBox(height: 10),
             if (_topPredictions.isNotEmpty)
               Wrap(
@@ -1335,9 +1645,9 @@ class _TranslatorPageState extends State<TranslatorPage>
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Stack(
+                LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final Widget micButton = Stack(
                       alignment: Alignment.center,
                       children: [
                         _buildMicPulse(),
@@ -1345,7 +1655,7 @@ class _TranslatorPageState extends State<TranslatorPage>
                           onPressed: _toggleListening,
                           style: FilledButton.styleFrom(
                             shape: const CircleBorder(),
-                            minimumSize: const Size(54, 54),
+                            minimumSize: const Size(56, 56),
                             backgroundColor: _isListening
                                 ? scheme.error
                                 : scheme.primary,
@@ -1353,25 +1663,45 @@ class _TranslatorPageState extends State<TranslatorPage>
                           child: Icon(_isListening ? Icons.stop : Icons.mic),
                         ),
                       ],
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: scheme.surfaceContainerHighest.withValues(
-                            alpha: 0.55,
-                          ),
-                        ),
-                        child: Text(
-                          _speechText.isEmpty
-                              ? 'Tap the mic button to start listening.'
-                              : _speechText,
+                    );
+
+                    final Widget transcriptBox = Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: scheme.surfaceContainerHighest.withValues(
+                          alpha: 0.7,
                         ),
                       ),
-                    ),
-                  ],
+                      child: Text(
+                        _speechText.isEmpty
+                            ? 'Tap the mic button to start listening.'
+                            : _speechText,
+                      ),
+                    );
+
+                    if (constraints.maxWidth < 620) {
+                      return Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: micButton,
+                          ),
+                          const SizedBox(height: 12),
+                          transcriptBox,
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        micButton,
+                        const SizedBox(width: 14),
+                        Expanded(child: transcriptBox),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -1829,16 +2159,25 @@ class AboutPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.sign_language, size: 28),
-                        SizedBox(width: 10),
-                        Text(
-                          'SmartBridge',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        const SmartBridgeLogo(size: 46),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'SmartBridge',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              'Communication Assistant',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -46,7 +46,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.info_outline));
     await tester.pumpAndSettle();
 
-    expect(find.text('SmartBridge'), findsOneWidget);
+    expect(find.text('SmartBridge'), findsWidgets);
     expect(find.textContaining('Version:'), findsOneWidget);
   });
 }
