@@ -1,0 +1,7 @@
+io.github.iot_gamer.hand_landmarker-pngs-0 C:\smartBridgeApp\android\build\generated\res\pngs\release
+io.github.iot_gamer.hand_landmarker-resValues-1 C:\smartBridgeApp\android\build\generated\res\resValues\release
+io.github.iot_gamer.hand_landmarker-mergeReleaseResources-2 C:\smartBridgeApp\android\build\intermediates\incremental\release\mergeReleaseResources\merged.dir
+io.github.iot_gamer.hand_landmarker-mergeReleaseResources-3 C:\smartBridgeApp\android\build\intermediates\incremental\release\mergeReleaseResources\stripped.dir
+io.github.iot_gamer.hand_landmarker-release-4 C:\smartBridgeApp\android\build\intermediates\merged_res\release\mergeReleaseResources
+io.github.iot_gamer.hand_landmarker-main-5 C:\smartBridgeApp\android\src\main\res
+io.github.iot_gamer.hand_landmarker-release-6 C:\smartBridgeApp\android\src\release\res
