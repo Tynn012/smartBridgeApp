@@ -652,6 +652,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Widget _buildTutorialFooter(ColorScheme scheme) {
+    final List<String> supportedGestures = <String>[
+      'Open Palm',
+      'Closed Fist',
+      'Pointing Up',
+      'Thumb Up',
+      'Thumb Down',
+      'Victory',
+      'I Love You',
+      'None',
+    ];
+
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -663,10 +674,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         mainAxisSize: MainAxisSize.min,
         children: [
           AspectRatio(
-            aspectRatio: 16 / 9,
+            aspectRatio: 4 / 3,
             child: Image.asset(
               'assets/tutorial/hand_signs_guide.png',
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               width: double.infinity,
             ),
           ),
@@ -676,10 +687,33 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Tip: Start with Open_Palm, Closed_Fist, and Victory for best consistency.',
+                  'Recognized gestures',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: supportedGestures
+                      .map((String gesture) => Chip(label: Text(gesture)))
+                      .toList(),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Tip: Start with Open Palm, Closed Fist, and Victory for best consistency.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'If prediction flickers, move to better lighting and keep only one hand in frame.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -721,6 +755,40 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 _buildBullet(
                   scheme,
                   'Use in safe environments. Never operate while driving, crossing roads, or in hazardous settings.',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: scheme.secondaryContainer.withValues(alpha: 0.28),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Data and reliability summary',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                _buildBullet(
+                  scheme,
+                  'Recognition confidence can vary with lighting, camera angle, and hand visibility.',
+                ),
+                _buildBullet(
+                  scheme,
+                  'No cloud upload is required for basic translation flow; permissions can be revoked in Settings.',
+                ),
+                _buildBullet(
+                  scheme,
+                  'You remain responsible for verifying critical communication outcomes.',
                 ),
               ],
             ),
@@ -836,11 +904,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                                         ],
                                       ),
                                     ),
-                                    if (_page < _slideCount - 1)
-                                      TextButton(
-                                        onPressed: _skipToTerms,
-                                        child: const Text('Skip to Terms'),
-                                      ),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
@@ -853,6 +916,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                                         scheme.surfaceContainerHighest,
                                   ),
                                 ),
+                                if (_page < _slideCount - 1) ...[
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: TextButton.icon(
+                                      onPressed: _skipToTerms,
+                                      icon: const Icon(
+                                        Icons.fast_forward_rounded,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Skip to Terms'),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -2331,6 +2408,28 @@ class SettingsPage extends StatelessWidget {
   final ValueChanged<AppUiPreferences> onPreferencesChanged;
   final VoidCallback onClearHistory;
 
+  String _themeModeLabel(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 'System';
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+    }
+  }
+
+  IconData _themeModeIcon(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return Icons.brightness_auto;
+      case ThemeMode.light:
+        return Icons.light_mode;
+      case ThemeMode.dark:
+        return Icons.dark_mode;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -2348,31 +2447,68 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 const Text('Theme mode'),
+                const SizedBox(height: 6),
+                Text(
+                  prefs.themeMode == ThemeMode.system
+                      ? 'Following device appearance (${MediaQuery.platformBrightnessOf(context) == Brightness.dark ? 'currently dark' : 'currently light'}).'
+                      : 'Manual theme override is active for SmartBridge.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 const SizedBox(height: 8),
-                SegmentedButton<ThemeMode>(
-                  showSelectedIcon: false,
-                  multiSelectionEnabled: false,
-                  segments: const [
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.system,
-                      icon: Icon(Icons.brightness_auto),
-                      label: Text('System'),
-                    ),
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.light,
-                      icon: Icon(Icons.light_mode),
-                      label: Text('Light'),
-                    ),
-                    ButtonSegment<ThemeMode>(
-                      value: ThemeMode.dark,
-                      icon: Icon(Icons.dark_mode),
-                      label: Text('Dark'),
-                    ),
-                  ],
-                  selected: <ThemeMode>{prefs.themeMode},
-                  onSelectionChanged: (Set<ThemeMode> selection) {
-                    onPreferencesChanged(
-                      prefs.copyWith(themeMode: selection.first),
+                LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final bool compact = constraints.maxWidth < 420;
+                    if (compact) {
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: ThemeMode.values.map((ThemeMode mode) {
+                          return ChoiceChip(
+                            avatar: Icon(
+                              _themeModeIcon(mode),
+                              size: 18,
+                              color: prefs.themeMode == mode
+                                  ? Theme.of(context).colorScheme.onPrimary
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                            label: Text(_themeModeLabel(mode)),
+                            selected: prefs.themeMode == mode,
+                            onSelected: (_) {
+                              onPreferencesChanged(
+                                prefs.copyWith(themeMode: mode),
+                              );
+                            },
+                          );
+                        }).toList(),
+                      );
+                    }
+
+                    return SegmentedButton<ThemeMode>(
+                      showSelectedIcon: false,
+                      multiSelectionEnabled: false,
+                      segments: const [
+                        ButtonSegment<ThemeMode>(
+                          value: ThemeMode.system,
+                          icon: Icon(Icons.brightness_auto),
+                          label: Text('System'),
+                        ),
+                        ButtonSegment<ThemeMode>(
+                          value: ThemeMode.light,
+                          icon: Icon(Icons.light_mode),
+                          label: Text('Light'),
+                        ),
+                        ButtonSegment<ThemeMode>(
+                          value: ThemeMode.dark,
+                          icon: Icon(Icons.dark_mode),
+                          label: Text('Dark'),
+                        ),
+                      ],
+                      selected: <ThemeMode>{prefs.themeMode},
+                      onSelectionChanged: (Set<ThemeMode> selection) {
+                        onPreferencesChanged(
+                          prefs.copyWith(themeMode: selection.first),
+                        );
+                      },
                     );
                   },
                 ),
@@ -2680,6 +2816,8 @@ class AboutPage extends StatelessWidget {
                 Text('4. Accessibility customization and motion controls.'),
                 Text('5. Swipe-based page navigation for easier access.'),
                 Text('6. History logging with confidence summaries.'),
+                Text('7. Adjustable confidence thresholds for recognition.'),
+                Text('8. Manual fallback mode when sensors are unavailable.'),
               ],
             ),
             _sectionCard(
@@ -2696,6 +2834,14 @@ class AboutPage extends StatelessWidget {
                 const SizedBox(height: 10),
                 const Text(
                   'Practice each gesture in front of the camera. Hold your hand steady for 1-2 seconds and keep your palm within the frame center.',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Supported classes: Open_Palm, Closed_Fist, Pointing_Up, Thumb_Up, Thumb_Down, Victory, ILoveYou, and None.',
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'For better stability: use even lighting, avoid cluttered backgrounds, and position your hand around 40-80 cm from the camera.',
                 ),
               ],
             ),
