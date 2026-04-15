@@ -17,6 +17,7 @@ dependencies:
   permission_handler: ^11.4.0
   google_fonts: ^6.3.3
   shared_preferences: ^2.5.5
+  package_info_plus: ^8.0.2
 
 dev_dependencies:
   flutter_test:

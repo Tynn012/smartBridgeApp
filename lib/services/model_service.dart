@@ -1114,11 +1114,11 @@ class ModelService {
       inputLayout: _inputIsNchw ? 'NCHW' : 'NHWC',
       outputClasses: _outputClasses,
       labelsCount: _signLabels.length,
-      inputMin: (inputStats?['min'] as num?)?.toDouble() ?? 0.0,
-      inputMax: (inputStats?['max'] as num?)?.toDouble() ?? 0.0,
-      inputMean: (inputStats?['mean'] as num?)?.toDouble() ?? 0.0,
-      inputNonZero: (inputStats?['nonZero'] as num?)?.toInt() ?? 0,
-      inputTotal: (inputStats?['total'] as num?)?.toInt() ?? 0,
+      inputMin: inputStats?['min']?.toDouble() ?? 0.0,
+      inputMax: inputStats?['max']?.toDouble() ?? 0.0,
+      inputMean: inputStats?['mean']?.toDouble() ?? 0.0,
+      inputNonZero: inputStats?['nonZero']?.toInt() ?? 0,
+      inputTotal: inputStats?['total']?.toInt() ?? 0,
       inferenceMs: inferenceMs,
       normalizationMode: normalizationMode,
       rawMin: rawMin,
@@ -1139,7 +1139,7 @@ class ModelService {
     return 'Hugging Face ASL pipeline\n'
         'Repo: ColdSlim/ASL-TFLite-Edge\n'
         'Landmarks: MediaPipe Hand Landmarker\n'
-        'Input: ${_modelInputWidth} x ${_modelInputHeight} x ${_modelInputChannels} landmark rendering\n'
+        'Input: $_modelInputWidth x $_modelInputHeight x $_modelInputChannels landmark rendering\n'
         'Layout: ${_inputIsNchw ? 'NCHW' : 'NHWC'}\n'
         'Native runtime loaded: ${_isRuntimeLoaded ? 'Yes' : 'No'}\n'
         'Output classes: $_outputClasses\n'

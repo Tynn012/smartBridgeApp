@@ -1,36 +1,52 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smartbridgeapp/main.dart';
 
 void main() {
-  testWidgets('App loads core translator screens', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
-    await tester.pump();
+  testWidgets('First launch shows onboarding and terms checkbox', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
 
-    expect(find.text('SmartBridge'), findsOneWidget);
-    expect(find.text('Sign Recognition'), findsOneWidget);
-    expect(find.text('Speech to Text'), findsOneWidget);
-    expect(find.text('Text to Speech'), findsOneWidget);
-    expect(find.text('Translate'), findsOneWidget);
-    expect(find.text('History'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    await tester.pumpWidget(const MyApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome to SmartBridge'), findsOneWidget);
+
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Terms and Conditions'), findsOneWidget);
+    expect(find.text('I agree to the Terms and Conditions'), findsOneWidget);
   });
 
-  testWidgets('Settings tab is reachable', (WidgetTester tester) async {
+  testWidgets('Returning users can access main pages', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'onboarding_seen': true,
+      'accepted_terms': true,
+    });
+
     await tester.pumpWidget(const MyApp());
-    await tester.pump();
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Settings'));
-    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.text('Swipe left or right to switch pages quickly.'),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.info_outline), findsWidgets);
 
-    expect(find.text('Clear History'), findsOneWidget);
-    expect(find.text('App Permission Settings'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.info_outline));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SmartBridge'), findsOneWidget);
+    expect(find.textContaining('Version:'), findsOneWidget);
   });
 }
