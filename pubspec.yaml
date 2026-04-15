@@ -31,6 +31,7 @@ flutter:
     - smartbridge.png
     - assets/models/
     - assets/sounds/
+    - assets/tutorial/
 
 flutter_launcher_icons:
   android: true

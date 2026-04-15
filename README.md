@@ -45,8 +45,9 @@ On first opening, users see swipeable onboarding pages that explain:
 
 - What SmartBridge does
 - Main translation functions
+- Hand-sign tutorial reference image
 - Accessibility support
-- Terms and Conditions
+- Expanded Terms and Conditions with usage and safety notes
 
 The app is only accessible after checking the terms acceptance box.
 

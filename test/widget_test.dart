@@ -13,13 +13,10 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to SmartBridge'), findsOneWidget);
+    expect(find.text('SmartBridge Setup'), findsOneWidget);
+    expect(find.text('Your communication bridge starts here'), findsOneWidget);
 
-    await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Next'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Next'));
+    await tester.tap(find.text('Skip to Terms'));
     await tester.pumpAndSettle();
 
     expect(find.text('Terms and Conditions'), findsOneWidget);
