@@ -206,6 +206,11 @@ class ModelService {
 
   static const int _defaultInputSize = 64;
   static const int _defaultInputChannels = 3;
+  static const int _defaultFeatureCount = 64;
+  static const String _modelAssetPath =
+      'assets/models/qualcomm_hand_gesture_classifier.tflite';
+  static const String _labelsAssetPath =
+      'assets/models/qualcomm_hand_gesture_labels.json';
   static const int _renderCanvasSize = 600;
   static const MethodChannel _modelChannel = MethodChannel('smartbridge/lstm');
 
@@ -240,74 +245,32 @@ class ModelService {
   bool _isRuntimeLoaded = false;
   int _lastDetectedHands = 0;
   String _lastStatus = 'Not initialized';
-  int _outputClasses = 59;
+  int _outputClasses = 8;
   int _modelInputWidth = _defaultInputSize;
   int _modelInputHeight = _defaultInputSize;
   int _modelInputChannels = _defaultInputChannels;
+  int _expectedInputElements = _defaultFeatureCount;
   bool _inputIsNchw = false;
+  bool _usesLandmarkVectorInput = true;
   ModelDebugInfo _lastDebugInfo = ModelDebugInfo.initial();
 
   final List<String> _signLabels = [
-    '<pad>',
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
-    'M',
-    'N',
-    'O',
-    'P',
-    'Q',
-    'R',
-    'S',
-    'T',
-    'U',
-    'V',
-    'W',
-    'X',
-    'Y',
-    'Z',
-    'a',
-    'b',
-    'c',
-    'd',
-    'e',
-    'f',
-    'g',
-    'h',
-    'i',
-    'j',
-    'k',
-    'l',
-    'm',
-    'n',
-    'o',
-    'p',
-    'q',
-    'r',
-    's',
-    't',
-    'u',
-    'v',
-    'w',
-    'x',
-    'y',
-    'z',
-    'space',
-    "'",
-    '.',
-    ',',
-    '?',
-    '<blank>',
+    'None',
+    'Closed_Fist',
+    'Open_Palm',
+    'Pointing_Up',
+    'Thumb_Down',
+    'Thumb_Up',
+    'Victory',
+    'ILoveYou',
   ];
+
+  static const Set<String> _specialLabels = <String>{
+    '<pad>',
+    '<blank>',
+    'pad',
+    'blank',
+  };
 
   bool get isModelLoaded => _isModelLoaded;
   List<String> get signLabels => _signLabels;
@@ -317,7 +280,7 @@ class ModelService {
     try {
       if (kIsWeb || !Platform.isAndroid) {
         throw Exception(
-          'ColdSlim model path is currently supported on Android only.',
+          'On-device hand gesture runtime is currently supported on Android only.',
         );
       }
 
@@ -336,7 +299,7 @@ class ModelService {
       }
 
       _isModelLoaded = true;
-      _lastStatus = 'Ready (ColdSlim ASL edge runtime)';
+      _lastStatus = 'Ready (Qualcomm MediaPipe gesture runtime)';
       _updateDebugInfo(
         stage: 'init',
         note: 'Model initialized successfully.',
@@ -366,9 +329,7 @@ class ModelService {
 
   Future<void> _loadLabelMapping() async {
     try {
-      final String raw = await rootBundle.loadString(
-        'assets/models/coldslim_labels.json',
-      );
+      final String raw = await rootBundle.loadString(_labelsAssetPath);
       final dynamic decoded = jsonDecode(raw);
 
       final List<String> labels;
@@ -392,21 +353,21 @@ class ModelService {
 
   Future<void> _initializeNativeModel() async {
     try {
-      final Map<Object?, Object?>? response = await _modelChannel
-          .invokeMethod('initAslEdge', {
-            'modelAssetPath': 'assets/models/coldslim_asl_edge_model.tflite',
-            'numThreads': 2,
-          });
+      final Map<Object?, Object?>? response = await _modelChannel.invokeMethod(
+        'initAslEdge',
+        {'modelAssetPath': _modelAssetPath, 'numThreads': 2},
+      );
 
       final Map<String, dynamic> info = (response ?? <Object?, Object?>{})
           .cast<String, dynamic>();
 
-      _outputClasses = (info['outputClasses'] as int?) ?? 59;
+      _outputClasses = (info['outputClasses'] as int?) ?? 8;
       _applyInputShapeInfo(info['inputShape']);
       _isRuntimeLoaded = (info['ok'] as bool?) ?? false;
       if (_isRuntimeLoaded) {
         _lastStatus =
-            (info['status'] as String?) ?? 'Native ASL runtime initialized';
+            (info['status'] as String?) ??
+            'Native Qualcomm gesture runtime initialized';
         _updateDebugInfo(
           stage: 'init',
           note: _lastStatus,
@@ -439,7 +400,7 @@ class ModelService {
         .map((value) => value.toInt())
         .toList(growable: false);
 
-    if (shape.length != 4) {
+    if (shape.isEmpty) {
       return;
     }
 
@@ -447,24 +408,71 @@ class ModelService {
     int height = _defaultInputSize;
     int channels = _defaultInputChannels;
     bool isNchw = false;
+    bool landmarkVectorInput = false;
 
-    if (shape[3] >= 1 && shape[3] <= 4) {
-      // NHWC layout
-      height = shape[1];
-      width = shape[2];
-      channels = shape[3];
-    } else if (shape[1] >= 1 && shape[1] <= 4) {
-      // NCHW layout fallback
-      isNchw = true;
-      channels = shape[1];
-      height = shape[2];
-      width = shape[3];
+    if (shape.length == 2) {
+      // [N, Features]
+      width = shape[1].abs();
+      height = 1;
+      channels = 1;
+      landmarkVectorInput = true;
+    } else if (shape.length == 3) {
+      // [N, Steps, Channels] for Conv1D models.
+      width = shape[1].abs();
+      height = 1;
+      channels = shape[2].abs();
+      landmarkVectorInput = true;
+    } else if (shape.length == 4) {
+      if (shape[3] >= 1 && shape[3] <= 4) {
+        // NHWC layout
+        height = shape[1];
+        width = shape[2];
+        channels = shape[3];
+      } else if (shape[1] >= 1 && shape[1] <= 4) {
+        // NCHW layout fallback
+        isNchw = true;
+        channels = shape[1];
+        height = shape[2];
+        width = shape[3];
+      }
+
+      final int flatElements =
+          (width.clamp(1, 8192) * height.clamp(1, 8192) * channels.clamp(1, 16))
+              .toInt();
+      landmarkVectorInput = flatElements <= 256;
     }
 
     _modelInputWidth = width.clamp(16, 1024);
     _modelInputHeight = height.clamp(16, 1024);
     _modelInputChannels = channels.clamp(1, 4);
     _inputIsNchw = isNchw;
+    _expectedInputElements = _computeExpectedInputElements(shape);
+    _usesLandmarkVectorInput = landmarkVectorInput;
+  }
+
+  int _computeExpectedInputElements(List<int> shape) {
+    if (shape.isEmpty) {
+      return _defaultFeatureCount;
+    }
+
+    final Iterable<int> dims = shape
+        .skip(1)
+        .map((v) => v.abs())
+        .where((v) => v > 0);
+
+    int product = 1;
+    for (final int dim in dims) {
+      product *= dim;
+      if (product > 1 << 20) {
+        break;
+      }
+    }
+
+    if (product <= 0) {
+      return _defaultFeatureCount;
+    }
+
+    return product;
   }
 
   Future<SignPrediction> runInference(
@@ -503,21 +511,107 @@ class ModelService {
       final Map<String, double> handBounds = _computeHandBounds(
         selectedHand.landmarks,
       );
-      final List<double> inputTensor = _buildLandmarkImageInput(
-        selectedHand.landmarks,
-        mirrorX: false,
-        normalizeToHandBox: false,
-        valueScale: 1.0,
-      );
-      final Map<String, num> inputStats = _computeTensorStats(inputTensor);
+      SignPrediction? prediction;
 
-      final SignPrediction? prediction = await _runNativeAslInference(
-        inputTensor,
-        detectedHands: hands.length,
-        selectedHandIndex: selectedHandIndex,
-        handBounds: handBounds,
-        inputStats: inputStats,
-      );
+      if (_usesLandmarkVectorInput) {
+        final List<double> handInput = _buildLandmarkFeatureInput(
+          selectedHand.landmarks,
+          mirrorX: false,
+          normalizeRelative: false,
+          handednessValue: 1.0,
+        );
+        final List<double> mirroredHandInput = _buildLandmarkFeatureInput(
+          selectedHand.landmarks,
+          mirrorX: true,
+          normalizeRelative: false,
+          handednessValue: 0.0,
+        );
+
+        prediction = await _runNativeAslInference(
+          handInput,
+          auxiliaryTensor: mirroredHandInput,
+          detectedHands: hands.length,
+          selectedHandIndex: selectedHandIndex,
+          handBounds: handBounds,
+          inputStats: _computeTensorStats(handInput),
+        );
+
+        final bool shouldTryNormalized =
+            prediction == null ||
+            prediction.label == 'Unknown' ||
+            prediction.confidence < 20.0;
+
+        if (shouldTryNormalized) {
+          final List<double> normalizedHandInput = _buildLandmarkFeatureInput(
+            selectedHand.landmarks,
+            mirrorX: false,
+            normalizeRelative: true,
+            handednessValue: 1.0,
+          );
+          final List<double> normalizedMirroredHandInput =
+              _buildLandmarkFeatureInput(
+                selectedHand.landmarks,
+                mirrorX: true,
+                normalizeRelative: true,
+                handednessValue: 0.0,
+              );
+
+          final SignPrediction? normalizedPrediction =
+              await _runNativeAslInference(
+                normalizedHandInput,
+                auxiliaryTensor: normalizedMirroredHandInput,
+                detectedHands: hands.length,
+                selectedHandIndex: selectedHandIndex,
+                handBounds: handBounds,
+                inputStats: _computeTensorStats(normalizedHandInput),
+              );
+
+          prediction = _preferPrediction(prediction, normalizedPrediction);
+        }
+      } else {
+        final List<double> inputTensor = _buildLandmarkImageInput(
+          selectedHand.landmarks,
+          mirrorX: false,
+          normalizeToHandBox: true,
+          valueScale: 1.0,
+        );
+        final Map<String, num> inputStats = _computeTensorStats(inputTensor);
+
+        final SignPrediction? primaryPrediction = await _runNativeAslInference(
+          inputTensor,
+          detectedHands: hands.length,
+          selectedHandIndex: selectedHandIndex,
+          handBounds: handBounds,
+          inputStats: inputStats,
+        );
+
+        prediction = primaryPrediction;
+
+        final bool shouldTryMirrored =
+            prediction == null ||
+            prediction.label == 'Unknown' ||
+            prediction.confidence < 22.0;
+
+        if (shouldTryMirrored) {
+          final List<double> mirroredInputTensor = _buildLandmarkImageInput(
+            selectedHand.landmarks,
+            mirrorX: true,
+            normalizeToHandBox: true,
+            valueScale: 1.0,
+          );
+
+          final SignPrediction? mirroredPrediction =
+              await _runNativeAslInference(
+                mirroredInputTensor,
+                detectedHands: hands.length,
+                selectedHandIndex: selectedHandIndex,
+                handBounds: handBounds,
+                inputStats: _computeTensorStats(mirroredInputTensor),
+              );
+
+          prediction = _preferPrediction(prediction, mirroredPrediction);
+        }
+      }
 
       if (prediction != null) {
         return prediction;
@@ -540,6 +634,79 @@ class ModelService {
         rawScores: List<double>.filled(_signLabels.length, 0.0),
       );
     }
+  }
+
+  List<double> _buildLandmarkFeatureInput(
+    List<Landmark> landmarks, {
+    required bool mirrorX,
+    required bool normalizeRelative,
+    required double handednessValue,
+  }) {
+    final int expected = _expectedInputElements.clamp(1, 2048);
+    final List<double> vector = List<double>.filled(expected, 0.0);
+
+    if (landmarks.isEmpty) {
+      return vector;
+    }
+
+    final int totalPoints = math.min(21, landmarks.length);
+    double minX = 1.0;
+    double minY = 1.0;
+    double maxX = 0.0;
+    double maxY = 0.0;
+
+    for (int i = 0; i < totalPoints; i++) {
+      final double px = mirrorX ? (1.0 - landmarks[i].x) : landmarks[i].x;
+      final double x = px.clamp(0.0, 1.0);
+      final double y = landmarks[i].y.clamp(0.0, 1.0);
+      minX = math.min(minX, x);
+      minY = math.min(minY, y);
+      maxX = math.max(maxX, x);
+      maxY = math.max(maxY, y);
+    }
+
+    final double wristX = (mirrorX ? (1.0 - landmarks[0].x) : landmarks[0].x)
+        .clamp(0.0, 1.0);
+    final double wristY = landmarks[0].y.clamp(0.0, 1.0);
+    final double span = math.max(math.max(maxX - minX, maxY - minY), 1e-6);
+
+    int cursor = 0;
+    for (int i = 0; i < totalPoints; i++) {
+      final double px = mirrorX ? (1.0 - landmarks[i].x) : landmarks[i].x;
+      final double x = px.clamp(0.0, 1.0);
+      final double y = landmarks[i].y.clamp(0.0, 1.0);
+      final double z = landmarks[i].z;
+
+      double fx;
+      double fy;
+      double fz;
+
+      if (normalizeRelative) {
+        fx = (x - wristX) / span;
+        fy = (y - wristY) / span;
+        fz = z / span;
+      } else {
+        fx = (x * 2.0) - 1.0;
+        fy = (y * 2.0) - 1.0;
+        fz = z.clamp(-1.0, 1.0);
+      }
+
+      if (cursor < vector.length) {
+        vector[cursor++] = fx;
+      }
+      if (cursor < vector.length) {
+        vector[cursor++] = fy;
+      }
+      if (cursor < vector.length) {
+        vector[cursor++] = fz;
+      }
+    }
+
+    if (cursor < vector.length) {
+      vector[cursor] = handednessValue.clamp(0.0, 1.0);
+    }
+
+    return vector;
   }
 
   Hand _selectLikelyRightHand(List<Hand> hands) {
@@ -754,6 +921,7 @@ class ModelService {
 
   Future<SignPrediction?> _runNativeAslInference(
     List<double> inputTensor, {
+    List<double>? auxiliaryTensor,
     required int detectedHands,
     required int selectedHandIndex,
     required Map<String, double> handBounds,
@@ -764,6 +932,7 @@ class ModelService {
       final Map<Object?, Object?>? response = await _modelChannel
           .invokeMethod('runAslEdge', {
             'input': inputTensor,
+            'inputAux': auxiliaryTensor,
             'width': _modelInputWidth,
             'height': _modelInputHeight,
             'channels': _modelInputChannels,
@@ -810,12 +979,10 @@ class ModelService {
 
       final List<double> paddedRawScores = _fitScoresToLabels(scores);
       final List<double> paddedScores = _fitScoresToLabels(normalizedScores);
-      final int bestIndex =
-          (nativeLabelIndex >= 0 && nativeLabelIndex < paddedScores.length)
-          ? nativeLabelIndex
-          : paddedScores.indexWhere(
-              (value) => value == paddedScores.reduce(math.max),
-            );
+      final int bestIndex = _bestUsableIndex(
+        paddedScores,
+        preferredIndex: nativeLabelIndex,
+      );
       final int safeIndex = bestIndex < 0 ? 0 : bestIndex;
       final double confidence = (paddedScores[safeIndex] * 100.0).clamp(
         0.0,
@@ -932,6 +1099,71 @@ class ModelService {
     return 'Unknown';
   }
 
+  bool _isSpecialLabel(String label) {
+    final String normalized = label.trim().toLowerCase();
+    return normalized.isEmpty || _specialLabels.contains(normalized);
+  }
+
+  int _bestUsableIndex(List<double> scores, {required int preferredIndex}) {
+    if (scores.isEmpty) {
+      return -1;
+    }
+
+    if (preferredIndex >= 0 && preferredIndex < scores.length) {
+      final String preferredLabel = _labelForIndex(preferredIndex);
+      if (!_isSpecialLabel(preferredLabel)) {
+        return preferredIndex;
+      }
+    }
+
+    int bestIndex = -1;
+    double bestScore = -double.infinity;
+
+    for (int i = 0; i < scores.length; i++) {
+      final String label = _labelForIndex(i);
+      if (_isSpecialLabel(label)) {
+        continue;
+      }
+
+      final double score = scores[i];
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex >= 0) {
+      return bestIndex;
+    }
+
+    // Fallback: if all labels are special, return highest score anyway.
+    int fallbackIndex = 0;
+    for (int i = 1; i < scores.length; i++) {
+      if (scores[i] > scores[fallbackIndex]) {
+        fallbackIndex = i;
+      }
+    }
+    return fallbackIndex;
+  }
+
+  SignPrediction? _preferPrediction(SignPrediction? a, SignPrediction? b) {
+    if (a == null) {
+      return b;
+    }
+    if (b == null) {
+      return a;
+    }
+
+    final bool aUnknown = a.label == 'Unknown' || a.label == 'Error';
+    final bool bUnknown = b.label == 'Unknown' || b.label == 'Error';
+
+    if (aUnknown != bUnknown) {
+      return aUnknown ? b : a;
+    }
+
+    return b.confidence > a.confidence ? b : a;
+  }
+
   List<SignPrediction> getTopKPredictions(
     List<double> predictions, {
     int topK = 3,
@@ -941,9 +1173,14 @@ class ModelService {
     final int total = math.min(normalized.length, _signLabels.length);
 
     for (int i = 0; i < total; i++) {
+      final String label = _labelForIndex(i);
+      if (_isSpecialLabel(label)) {
+        continue;
+      }
+
       allPredictions.add(
         SignPrediction(
-          label: _labelForIndex(i),
+          label: label,
           confidence: (normalized[i] * 100.0).clamp(0.0, 100.0),
           rawScores: normalized,
         ),
@@ -1136,11 +1373,11 @@ class ModelService {
       return 'Model not loaded';
     }
 
-    return 'Hugging Face ASL pipeline\n'
-        'Repo: ColdSlim/ASL-TFLite-Edge\n'
+    return 'Hugging Face gesture pipeline\n'
+        'Repo: qualcomm/MediaPipe-Hand-Gesture-Recognition\n'
         'Landmarks: MediaPipe Hand Landmarker\n'
-        'Input: $_modelInputWidth x $_modelInputHeight x $_modelInputChannels landmark rendering\n'
-        'Layout: ${_inputIsNchw ? 'NCHW' : 'NHWC'}\n'
+        'Input: ${_usesLandmarkVectorInput ? '64 hand features (63 landmarks + handedness)' : '$_modelInputWidth x $_modelInputHeight x $_modelInputChannels landmark rendering'}\n'
+        'Layout: ${_usesLandmarkVectorInput ? 'Feature Vector' : (_inputIsNchw ? 'NCHW' : 'NHWC')}\n'
         'Native runtime loaded: ${_isRuntimeLoaded ? 'Yes' : 'No'}\n'
         'Output classes: $_outputClasses\n'
         'Detected hands (last frame): $_lastDetectedHands\n'

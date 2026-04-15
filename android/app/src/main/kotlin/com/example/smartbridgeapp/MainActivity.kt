@@ -20,9 +20,10 @@ class MainActivity : FlutterActivity() {
 	}
 
 	private var edgeInterpreter: Interpreter? = null
-	private var outputClasses: Int = 59
+	private var outputClasses: Int = 8
 	private var inputShape: IntArray = intArrayOf(1, DEFAULT_INPUT_HEIGHT, DEFAULT_INPUT_WIDTH, DEFAULT_INPUT_CHANNELS)
 	private var inputType: DataType = DataType.FLOAT32
+	private var inputAuxType: DataType? = null
 	private var outputType: DataType = DataType.FLOAT32
 
 	override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -53,7 +54,7 @@ class MainActivity : FlutterActivity() {
 
 			val modelAssetPath =
 				call.argument<String>("modelAssetPath")
-					?: "assets/models/coldslim_asl_edge_model.tflite"
+					?: "assets/models/qualcomm_hand_gesture_classifier.tflite"
 			val numThreads = call.argument<Int>("numThreads") ?: 2
 
 			val modelBuffer = loadModelBuffer(modelAssetPath)
@@ -65,15 +66,20 @@ class MainActivity : FlutterActivity() {
 			edgeInterpreter = Interpreter(modelBuffer, options)
 			inputShape = edgeInterpreter?.getInputTensor(0)?.shape() ?: inputShape
 			inputType = edgeInterpreter?.getInputTensor(0)?.dataType() ?: DataType.FLOAT32
+			inputAuxType = if ((edgeInterpreter?.inputTensorCount ?: 1) > 1) {
+				edgeInterpreter?.getInputTensor(1)?.dataType() ?: DataType.FLOAT32
+			} else {
+				null
+			}
 			outputType = edgeInterpreter?.getOutputTensor(0)?.dataType() ?: DataType.FLOAT32
-			outputClasses = edgeInterpreter?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 59
+			outputClasses = edgeInterpreter?.getOutputTensor(0)?.shape()?.lastOrNull() ?: 8
 
 			result.success(
 				mapOf(
 					"ok" to true,
 					"outputClasses" to outputClasses,
 					"inputShape" to inputShape.toList(),
-					"status" to "ColdSlim ASL edge model initialized",
+					"status" to "Qualcomm hand gesture classifier initialized",
 				),
 			)
 		} catch (e: Exception) {
@@ -132,6 +138,8 @@ class MainActivity : FlutterActivity() {
 				return
 			}
 
+			val rawAuxInput = call.argument<List<*>>("inputAux")
+
 			val inputTensor = interpreter.getInputTensor(0)
 			val expected = (inputTensor.numBytes() / bytesPerElement(inputType)).coerceAtLeast(1)
 
@@ -145,7 +153,24 @@ class MainActivity : FlutterActivity() {
 				}
 			}
 
-			val scores = runAndCollectScores(interpreter, floatInput)
+			var floatAuxInput: FloatArray? = null
+			if (interpreter.inputTensorCount > 1) {
+				val auxType = inputAuxType ?: interpreter.getInputTensor(1).dataType()
+				val auxTensor = interpreter.getInputTensor(1)
+				val expectedAux = (auxTensor.numBytes() / bytesPerElement(auxType)).coerceAtLeast(1)
+				floatAuxInput = FloatArray(expectedAux)
+				val source = if (!rawAuxInput.isNullOrEmpty()) rawAuxInput else rawInput
+				val auxCopyCount = minOf(expectedAux, source.size)
+				for (i in 0 until auxCopyCount) {
+					val value = source[i]
+					floatAuxInput[i] = when (value) {
+						is Number -> value.toFloat()
+						else -> 0f
+					}
+				}
+			}
+
+			val scores = runAndCollectScores(interpreter, floatInput, floatAuxInput)
 			var bestIndex = 0
 			for (i in 1 until scores.size) {
 				if (scores[i] > scores[bestIndex]) {
@@ -174,59 +199,40 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 
-	private fun runAndCollectScores(interpreter: Interpreter, floatInput: FloatArray): List<Double> {
-		val inputQuantParams = interpreter.getInputTensor(0).quantizationParams()
-		val inputScale = if (inputQuantParams.scale == 0f) 1f else inputQuantParams.scale
-		val inputZeroPoint = inputQuantParams.zeroPoint
-
-		val inputBuffer = when (inputType) {
-			DataType.FLOAT32 -> {
-				ByteBuffer.allocateDirect(floatInput.size * 4)
-					.order(ByteOrder.nativeOrder())
-					.apply {
-						for (v in floatInput) {
-							putFloat(v)
-						}
-						rewind()
-					}
-			}
-			DataType.UINT8 -> {
-				ByteBuffer.allocateDirect(floatInput.size)
-					.order(ByteOrder.nativeOrder())
-					.apply {
-						for (v in floatInput) {
-							val q = ((v / inputScale) + inputZeroPoint)
-								.toInt()
-								.coerceIn(0, 255)
-							val b = q.toByte()
-							put(b)
-						}
-						rewind()
-					}
-			}
-			DataType.INT8 -> {
-				ByteBuffer.allocateDirect(floatInput.size)
-					.order(ByteOrder.nativeOrder())
-					.apply {
-						for (v in floatInput) {
-							val q = ((v / inputScale) + inputZeroPoint)
-								.toInt()
-								.coerceIn(-128, 127)
-							val b = q.toByte()
-							put(b)
-						}
-						rewind()
-					}
-			}
-			else -> throw IllegalStateException("Unsupported input tensor type: $inputType")
-		}
+	private fun runAndCollectScores(
+		interpreter: Interpreter,
+		floatInput: FloatArray,
+		floatInputAux: FloatArray?,
+	): List<Double> {
+		val primaryInputBuffer = buildInputBuffer(
+			interpreter = interpreter,
+			tensorIndex = 0,
+			values = floatInput,
+			tensorType = inputType,
+		)
 
 		val outputTensor = interpreter.getOutputTensor(0)
 		val outputCount = (outputTensor.numBytes() / bytesPerElement(outputType)).coerceAtLeast(1)
 		val outputBuffer = ByteBuffer.allocateDirect(outputTensor.numBytes())
 			.order(ByteOrder.nativeOrder())
 
-		interpreter.run(inputBuffer, outputBuffer)
+		if (interpreter.inputTensorCount > 1) {
+			val auxValues = floatInputAux ?: floatInput
+			val auxType = inputAuxType ?: interpreter.getInputTensor(1).dataType()
+			val auxInputBuffer = buildInputBuffer(
+				interpreter = interpreter,
+				tensorIndex = 1,
+				values = auxValues,
+				tensorType = auxType,
+			)
+
+			interpreter.runForMultipleInputsOutputs(
+				arrayOf(primaryInputBuffer, auxInputBuffer),
+				mutableMapOf<Int, Any>(0 to outputBuffer),
+			)
+		} else {
+			interpreter.run(primaryInputBuffer, outputBuffer)
+		}
 		outputBuffer.rewind()
 
 		return when (outputType) {
@@ -259,12 +265,64 @@ class MainActivity : FlutterActivity() {
 		}
 	}
 
+	private fun buildInputBuffer(
+		interpreter: Interpreter,
+		tensorIndex: Int,
+		values: FloatArray,
+		tensorType: DataType,
+	): ByteBuffer {
+		val inputQuantParams = interpreter.getInputTensor(tensorIndex).quantizationParams()
+		val inputScale = if (inputQuantParams.scale == 0f) 1f else inputQuantParams.scale
+		val inputZeroPoint = inputQuantParams.zeroPoint
+
+		return when (tensorType) {
+			DataType.FLOAT32 -> {
+				ByteBuffer.allocateDirect(values.size * 4)
+					.order(ByteOrder.nativeOrder())
+					.apply {
+						for (v in values) {
+							putFloat(v)
+						}
+						rewind()
+					}
+			}
+			DataType.UINT8 -> {
+				ByteBuffer.allocateDirect(values.size)
+					.order(ByteOrder.nativeOrder())
+					.apply {
+						for (v in values) {
+							val q = ((v / inputScale) + inputZeroPoint)
+								.toInt()
+								.coerceIn(0, 255)
+							put(q.toByte())
+						}
+						rewind()
+					}
+			}
+			DataType.INT8 -> {
+				ByteBuffer.allocateDirect(values.size)
+					.order(ByteOrder.nativeOrder())
+					.apply {
+						for (v in values) {
+							val q = ((v / inputScale) + inputZeroPoint)
+								.toInt()
+								.coerceIn(-128, 127)
+							put(q.toByte())
+						}
+						rewind()
+					}
+			}
+			else -> throw IllegalStateException("Unsupported input tensor type: $tensorType")
+		}
+	}
+
 	private fun disposeAslEdge() {
 		edgeInterpreter?.close()
 		edgeInterpreter = null
-		outputClasses = 59
+		outputClasses = 8
 		inputShape = intArrayOf(1, DEFAULT_INPUT_HEIGHT, DEFAULT_INPUT_WIDTH, DEFAULT_INPUT_CHANNELS)
 		inputType = DataType.FLOAT32
+		inputAuxType = null
 		outputType = DataType.FLOAT32
 	}
 }

@@ -245,49 +245,70 @@ class _MyAppState extends State<MyApp> {
 
     scheme = scheme.copyWith(
       primary: brightness == Brightness.dark
-          ? const Color(0xFF44D9D1)
+          ? const Color(0xFF6AF6ED)
           : const Color(0xFF006F69),
-      onPrimary: Colors.white,
+      onPrimary: brightness == Brightness.dark
+          ? const Color(0xFF003534)
+          : Colors.white,
+      primaryContainer: brightness == Brightness.dark
+          ? const Color(0xFF1C5D63)
+          : const Color(0xFFA7F0EB),
+      onPrimaryContainer: brightness == Brightness.dark
+          ? const Color(0xFFE6FFFF)
+          : const Color(0xFF003735),
       surface: brightness == Brightness.dark
-          ? const Color(0xFF0E1416)
+          ? const Color(0xFF101A1F)
           : const Color(0xFFF8FBFC),
       onSurface: brightness == Brightness.dark
-          ? const Color(0xFFF2F7F8)
+          ? const Color(0xFFF5FDFF)
           : const Color(0xFF0E2325),
+      surfaceContainer: brightness == Brightness.dark
+          ? const Color(0xFF1B2A31)
+          : const Color(0xFFEAF4F6),
       surfaceContainerHighest: brightness == Brightness.dark
-          ? const Color(0xFF213237)
+          ? const Color(0xFF263942)
           : const Color(0xFFDDECEF),
       onSurfaceVariant: brightness == Brightness.dark
-          ? const Color(0xFFC2D4D8)
+          ? const Color(0xFFE1EDF0)
           : const Color(0xFF315258),
       outline: brightness == Brightness.dark
-          ? const Color(0xFF638086)
+          ? const Color(0xFF9DB8BE)
           : const Color(0xFF5B7B81),
       outlineVariant: brightness == Brightness.dark
-          ? const Color(0xFF375158)
+          ? const Color(0xFF4C6871)
           : const Color(0xFFB1C7CB),
     );
 
     if (_prefs.highContrast) {
       scheme = scheme.copyWith(
         primary: brightness == Brightness.dark
-            ? const Color(0xFF4DEAE2)
+            ? const Color(0xFF64FFF6)
             : const Color(0xFF005A56),
-        onPrimary: Colors.white,
+        onPrimary: brightness == Brightness.dark
+            ? const Color(0xFF002221)
+            : Colors.white,
         surface: brightness == Brightness.dark
-            ? const Color(0xFF101418)
+            ? const Color(0xFF0C1216)
             : Colors.white,
         onSurface: brightness == Brightness.dark ? Colors.white : Colors.black,
       );
     }
 
+    final TextTheme appTextTheme = GoogleFonts.manropeTextTheme(
+      ThemeData(useMaterial3: true, brightness: brightness).textTheme,
+    ).apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      textTheme: GoogleFonts.manropeTextTheme(),
+      textTheme: appTextTheme,
+      primaryTextTheme: appTextTheme,
       scaffoldBackgroundColor: scheme.surface,
       cardTheme: CardThemeData(
         elevation: 0,
+        color: brightness == Brightness.dark
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.78)
+            : scheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: scheme.outlineVariant, width: 1.2),
@@ -296,13 +317,26 @@ class _MyAppState extends State<MyApp> {
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
-        backgroundColor: scheme.surface,
+        backgroundColor: brightness == Brightness.dark
+            ? scheme.surfaceContainer
+            : scheme.surface,
         foregroundColor: scheme.onSurface,
       ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 0,
-        backgroundColor: scheme.surface,
-        indicatorColor: scheme.primaryContainer,
+        backgroundColor: brightness == Brightness.dark
+            ? scheme.surfaceContainer
+            : scheme.surface,
+        indicatorColor: brightness == Brightness.dark
+            ? scheme.primary.withValues(alpha: 0.24)
+            : scheme.primaryContainer,
+      ),
+      chipTheme: ChipThemeData(
+        side: BorderSide(color: scheme.outlineVariant),
+        backgroundColor: brightness == Brightness.dark
+            ? scheme.surfaceContainerHighest.withValues(alpha: 0.7)
+            : scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        labelStyle: TextStyle(color: scheme.onSurface),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -746,11 +780,48 @@ class _SmartBridgeShellState extends State<SmartBridgeShell> {
     setState(() => _history.clear());
   }
 
+  ThemeMode _nextThemeMode(ThemeMode current) {
+    switch (current) {
+      case ThemeMode.system:
+        return ThemeMode.light;
+      case ThemeMode.light:
+        return ThemeMode.dark;
+      case ThemeMode.dark:
+        return ThemeMode.system;
+    }
+  }
+
+  IconData _themeIconForMode(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return Icons.brightness_auto;
+      case ThemeMode.light:
+        return Icons.light_mode;
+      case ThemeMode.dark:
+        return Icons.dark_mode;
+    }
+  }
+
+  String _themeTooltipForMode(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 'Theme: System (tap to set Light)';
+      case ThemeMode.light:
+        return 'Theme: Light (tap to set Dark)';
+      case ThemeMode.dark:
+        return 'Theme: Dark (tap to set System)';
+    }
+  }
+
   Future<void> _goToPage(int index) async {
+    if (index == _currentIndex) {
+      return;
+    }
+
     await _pageController.animateToPage(
       index,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 340),
+      curve: Curves.easeInOutCubicEmphasized,
     );
   }
 
@@ -803,17 +874,10 @@ class _SmartBridgeShellState extends State<SmartBridgeShell> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Toggle theme',
-            icon: Icon(
-              Theme.of(context).brightness == Brightness.dark
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
+            tooltip: _themeTooltipForMode(widget.prefs.themeMode),
+            icon: Icon(_themeIconForMode(widget.prefs.themeMode)),
             onPressed: () {
-              final ThemeMode next =
-                  Theme.of(context).brightness == Brightness.dark
-                  ? ThemeMode.light
-                  : ThemeMode.dark;
+              final ThemeMode next = _nextThemeMode(widget.prefs.themeMode);
               widget.onPreferencesChanged(
                 widget.prefs.copyWith(themeMode: next),
               );
@@ -854,6 +918,10 @@ class _SmartBridgeShellState extends State<SmartBridgeShell> {
             Expanded(
               child: PageView(
                 controller: _pageController,
+                physics: const BouncingScrollPhysics(
+                  parent: PageScrollPhysics(),
+                ),
+                allowImplicitScrolling: true,
                 onPageChanged: (int value) {
                   setState(() => _currentIndex = value);
                 },
@@ -1366,8 +1434,8 @@ class _TranslatorPageState extends State<TranslatorPage>
         return Transform.scale(
           scale: scale,
           child: Container(
-            width: 62,
-            height: 62,
+            width: 98,
+            height: 98,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
@@ -1380,6 +1448,24 @@ class _TranslatorPageState extends State<TranslatorPage>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCameraPreview(CameraController controller) {
+    final Size? previewSize = controller.value.previewSize;
+    if (previewSize == null) {
+      return CameraPreview(controller);
+    }
+
+    final double previewAspectRatio = previewSize.height / previewSize.width;
+    return ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: AspectRatio(
+          aspectRatio: previewAspectRatio,
+          child: CameraPreview(controller),
+        ),
+      ),
     );
   }
 
@@ -1441,7 +1527,7 @@ class _TranslatorPageState extends State<TranslatorPage>
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: CameraPreview(_cameraService.cameraController!),
+              child: _buildCameraPreview(_cameraService.cameraController!),
             ),
           ),
           Positioned(
@@ -1564,10 +1650,8 @@ class _TranslatorPageState extends State<TranslatorPage>
             LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 final double previewHeight =
-                    (constraints.maxWidth / _cameraAspectRatio()).clamp(
-                      220.0,
-                      370.0,
-                    );
+                    ((constraints.maxWidth / _cameraAspectRatio()) * 1.18)
+                        .clamp(290.0, 520.0);
 
                 return Container(
                   width: double.infinity,
@@ -1640,54 +1724,129 @@ class _TranslatorPageState extends State<TranslatorPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Speech to Text',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                Row(
+                  children: [
+                    const Icon(Icons.mic_rounded),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Speech to Text',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(99),
+                        color:
+                            (_isListening
+                                    ? scheme.errorContainer
+                                    : scheme.primaryContainer)
+                                .withValues(alpha: 0.9),
+                        border: Border.all(color: scheme.outlineVariant),
+                      ),
+                      child: Text(
+                        _isListening ? 'Listening' : 'Idle',
+                        style: TextStyle(
+                          color: _isListening
+                              ? scheme.onErrorContainer
+                              : scheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
+                    final Color micBackground = _isListening
+                        ? scheme.errorContainer
+                        : scheme.primaryContainer;
+                    final Color micForeground = _isListening
+                        ? scheme.onErrorContainer
+                        : scheme.onPrimaryContainer;
+
                     final Widget micButton = Stack(
                       alignment: Alignment.center,
                       children: [
                         _buildMicPulse(),
-                        FilledButton(
-                          onPressed: _toggleListening,
-                          style: FilledButton.styleFrom(
-                            shape: const CircleBorder(),
-                            minimumSize: const Size(56, 56),
-                            backgroundColor: _isListening
-                                ? scheme.error
-                                : scheme.primary,
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 84,
+                          height: 84,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: micBackground,
+                            border: Border.all(
+                              color: micForeground.withValues(alpha: 0.22),
+                              width: 1.6,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: micBackground.withValues(alpha: 0.38),
+                                blurRadius: _isListening ? 20 : 12,
+                                spreadRadius: _isListening ? 2 : 0,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                           ),
-                          child: Icon(_isListening ? Icons.stop : Icons.mic),
+                          child: IconButton(
+                            onPressed: _toggleListening,
+                            iconSize: 34,
+                            icon: Icon(
+                              _isListening
+                                  ? Icons.stop_rounded
+                                  : Icons.mic_rounded,
+                              color: micForeground,
+                            ),
+                          ),
                         ),
                       ],
                     );
 
                     final Widget transcriptBox = Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: scheme.surfaceContainerHighest.withValues(
-                          alpha: 0.7,
+                          alpha: 0.78,
                         ),
+                        border: Border.all(color: scheme.outlineVariant),
                       ),
-                      child: Text(
-                        _speechText.isEmpty
-                            ? 'Tap the mic button to start listening.'
-                            : _speechText,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.subtitles_outlined,
+                            size: 20,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _speechText.isEmpty
+                                  ? 'Tap the microphone to start live transcription.'
+                                  : _speechText,
+                              style: TextStyle(
+                                color: _speechText.isEmpty
+                                    ? scheme.onSurfaceVariant
+                                    : scheme.onSurface,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     );
 
                     if (constraints.maxWidth < 620) {
                       return Column(
                         children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: micButton,
-                          ),
+                          Align(alignment: Alignment.center, child: micButton),
                           const SizedBox(height: 12),
                           transcriptBox,
                         ],
@@ -1904,27 +2063,33 @@ class SettingsPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
-                DropdownButtonFormField<ThemeMode>(
-                  initialValue: prefs.themeMode,
-                  decoration: const InputDecoration(labelText: 'Theme'),
-                  items: const [
-                    DropdownMenuItem(
+                const Text('Theme mode'),
+                const SizedBox(height: 8),
+                SegmentedButton<ThemeMode>(
+                  showSelectedIcon: false,
+                  multiSelectionEnabled: false,
+                  segments: const [
+                    ButtonSegment<ThemeMode>(
                       value: ThemeMode.system,
-                      child: Text('System default'),
+                      icon: Icon(Icons.brightness_auto),
+                      label: Text('System'),
                     ),
-                    DropdownMenuItem(
+                    ButtonSegment<ThemeMode>(
                       value: ThemeMode.light,
-                      child: Text('Light'),
+                      icon: Icon(Icons.light_mode),
+                      label: Text('Light'),
                     ),
-                    DropdownMenuItem(
+                    ButtonSegment<ThemeMode>(
                       value: ThemeMode.dark,
-                      child: Text('Dark'),
+                      icon: Icon(Icons.dark_mode),
+                      label: Text('Dark'),
                     ),
                   ],
-                  onChanged: (ThemeMode? value) {
-                    if (value != null) {
-                      onPreferencesChanged(prefs.copyWith(themeMode: value));
-                    }
+                  selected: <ThemeMode>{prefs.themeMode},
+                  onSelectionChanged: (Set<ThemeMode> selection) {
+                    onPreferencesChanged(
+                      prefs.copyWith(themeMode: selection.first),
+                    );
                   },
                 ),
                 const SizedBox(height: 10),

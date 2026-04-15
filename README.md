@@ -7,6 +7,13 @@ SmartBridge is a Flutter-based communication assistant that combines:
 - Text-to-speech output
 - Accessibility-focused controls
 
+## Supported Targets
+
+- Android (primary runtime)
+- Web
+
+Unneeded platform scaffolding for iOS, macOS, Linux, and Windows has been removed to keep this project focused and lighter.
+
 ## Version
 
 - Current version: 1.0.0+1
@@ -51,8 +58,8 @@ The app is only accessible after checking the terms acceptance box.
   - `lib/services/model_service.dart`
   - `lib/services/permission_handler.dart`
 - Model assets:
-  - `assets/models/coldslim_asl_edge_model.tflite`
-  - `assets/models/coldslim_labels.json`
+  - `assets/models/qualcomm_hand_gesture_classifier.tflite`
+  - `assets/models/qualcomm_hand_gesture_labels.json`
 
 ## Run Commands
 
