@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:hand_landmarker/hand_landmarker.dart';
 
 class SignPrediction {
@@ -240,12 +242,13 @@ class ModelService {
   ];
 
   HandLandmarkerPlugin? _landmarker;
+  PoseDetector? _poseDetector;
 
   bool _isModelLoaded = false;
   bool _isRuntimeLoaded = false;
   int _lastDetectedHands = 0;
   String _lastStatus = 'Not initialized';
-  int _outputClasses = 8;
+  int _outputClasses = 15;
   int _modelInputWidth = _defaultInputSize;
   int _modelInputHeight = _defaultInputSize;
   int _modelInputChannels = _defaultInputChannels;
@@ -299,6 +302,13 @@ class ModelService {
         numHands: 2,
         minHandDetectionConfidence: 0.45,
         delegate: HandLandmarkerDelegate.cpu,
+      );
+
+      _poseDetector = PoseDetector(
+        options: PoseDetectorOptions(
+          model: PoseDetectionModel.base,
+          mode: PoseDetectionMode.stream,
+        ),
       );
 
       _sequenceBuffer.clear();
@@ -378,7 +388,7 @@ class ModelService {
       final Map<String, dynamic> info = (response ?? <Object?, Object?>{})
           .cast<String, dynamic>();
 
-      _outputClasses = (info['outputClasses'] as int?) ?? 8;
+      _outputClasses = (info['outputClasses'] as int?) ?? 15;
       _applyInputShapeInfo(info['inputShape']);
       _isRuntimeLoaded = (info['ok'] as bool?) ?? false;
       if (_isRuntimeLoaded) {
@@ -509,32 +519,26 @@ class ModelService {
 
       final List<Hand> hands = _landmarker!.detect(image, sensorOrientation);
       _lastDetectedHands = hands.length;
+      final Pose? pose = await _detectPose(image, sensorOrientation);
+      Hand? selectedHand;
+      int selectedHandIndex = -1;
+      Map<String, double> handBounds = const <String, double>{};
 
-      if (hands.isEmpty) {
-        _sequenceBuffer.clear();
-        _updateDebugInfo(
-          stage: 'detect',
-          note: 'No hand detected on frame.',
-          detectedHands: 0,
-          selectedHandIndex: -1,
-          inferenceMs: 0,
-        );
-        return SignPrediction(
-          label: 'No hand',
-          confidence: 0.0,
-          rawScores: List<double>.filled(_signLabels.length, 0.0),
-        );
+      if (hands.isNotEmpty) {
+        selectedHand = _selectLikelyRightHand(hands);
+        selectedHandIndex = hands.indexOf(selectedHand);
+        handBounds = _computeHandBounds(selectedHand.landmarks);
       }
 
-      final Hand selectedHand = _selectLikelyRightHand(hands);
-      final int selectedHandIndex = hands.indexOf(selectedHand);
-      final Map<String, double> handBounds = _computeHandBounds(
-        selectedHand.landmarks,
-      );
       SignPrediction? prediction;
 
       if (_usesSequenceInput) {
-        final List<double> frameFeatures = _buildSenyasFrameFeatures(hands);
+        final List<double> frameFeatures = _buildSenyasFrameFeatures(
+          imageWidth: image.width,
+          imageHeight: image.height,
+          pose: pose,
+          hands: hands,
+        );
         _sequenceBuffer.add(frameFeatures);
         if (_sequenceBuffer.length > _sequenceLength) {
           _sequenceBuffer.removeAt(0);
@@ -547,19 +551,33 @@ class ModelService {
         prediction = await _runNativeAslInference(
           sequenceInput,
           detectedHands: hands.length,
-          selectedHandIndex: selectedHandIndex,
-          handBounds: handBounds,
+          selectedHandIndex: -1,
+          handBounds: const <String, double>{},
           inputStats: _computeTensorStats(sequenceInput),
         );
+      } else if (hands.isEmpty) {
+        _updateDebugInfo(
+          stage: 'detect',
+          note: 'No hand detected on frame.',
+          detectedHands: 0,
+          selectedHandIndex: -1,
+          inferenceMs: 0,
+        );
+        return SignPrediction(
+          label: 'No hand',
+          confidence: 0.0,
+          rawScores: List<double>.filled(_signLabels.length, 0.0),
+        );
       } else if (_usesLandmarkVectorInput) {
+        final Hand activeHand = selectedHand!;
         final List<double> handInput = _buildLandmarkFeatureInput(
-          selectedHand.landmarks,
+          activeHand.landmarks,
           mirrorX: false,
           normalizeRelative: false,
           handednessValue: 1.0,
         );
         final List<double> mirroredHandInput = _buildLandmarkFeatureInput(
-          selectedHand.landmarks,
+          activeHand.landmarks,
           mirrorX: true,
           normalizeRelative: false,
           handednessValue: 0.0,
@@ -581,14 +599,14 @@ class ModelService {
 
         if (shouldTryNormalized) {
           final List<double> normalizedHandInput = _buildLandmarkFeatureInput(
-            selectedHand.landmarks,
+            activeHand.landmarks,
             mirrorX: false,
             normalizeRelative: true,
             handednessValue: 1.0,
           );
           final List<double> normalizedMirroredHandInput =
               _buildLandmarkFeatureInput(
-                selectedHand.landmarks,
+                activeHand.landmarks,
                 mirrorX: true,
                 normalizeRelative: true,
                 handednessValue: 0.0,
@@ -608,7 +626,7 @@ class ModelService {
         }
       } else {
         final List<double> inputTensor = _buildLandmarkImageInput(
-          selectedHand.landmarks,
+          selectedHand!.landmarks,
           mirrorX: false,
           normalizeToHandBox: true,
           valueScale: 1.0,
@@ -672,6 +690,65 @@ class ModelService {
         rawScores: List<double>.filled(_signLabels.length, 0.0),
       );
     }
+  }
+
+  Future<Pose?> _detectPose(CameraImage image, int sensorOrientation) async {
+    final PoseDetector? detector = _poseDetector;
+    if (detector == null) {
+      return null;
+    }
+
+    final InputImage? inputImage = _buildPoseInputImage(
+      image,
+      sensorOrientation,
+    );
+    if (inputImage == null) {
+      return null;
+    }
+
+    try {
+      final List<Pose> poses = await detector.processImage(inputImage);
+      if (poses.isEmpty) {
+        return null;
+      }
+      return poses.first;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Pose detection error: $e');
+      }
+      return null;
+    }
+  }
+
+  InputImage? _buildPoseInputImage(
+    CameraImage image,
+    int sensorOrientation,
+  ) {
+    final InputImageFormat? imageFormat = InputImageFormatValue.fromRawValue(
+      image.format.raw,
+    );
+    final InputImageRotation? rotation = InputImageRotationValue.fromRawValue(
+      sensorOrientation,
+    );
+
+    if (imageFormat == null || rotation == null) {
+      return null;
+    }
+
+    final BytesBuilder bytesBuilder = BytesBuilder(copy: false);
+    for (final Plane plane in image.planes) {
+      bytesBuilder.add(plane.bytes);
+    }
+
+    return InputImage.fromBytes(
+      bytes: bytesBuilder.takeBytes(),
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: imageFormat,
+        bytesPerRow: image.planes.first.bytesPerRow,
+      ),
+    );
   }
 
   List<double> _buildLandmarkFeatureInput(
@@ -768,49 +845,135 @@ class ModelService {
     return tensor;
   }
 
-  List<double> _buildSenyasFrameFeatures(List<Hand> hands) {
+  List<double> _buildSenyasFrameFeatures({
+    required int imageWidth,
+    required int imageHeight,
+    required Pose? pose,
+    required List<Hand> hands,
+  }) {
     final List<double> frame = List<double>.filled(
       _sequenceFeatureCount,
       0.0,
     );
 
+    _writePoseFeatures(
+      frame: frame,
+      pose: pose,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+    );
+
     final List<Hand> orderedHands = List<Hand>.from(hands);
+    final double poseCenterX = _poseCenterX(pose);
     orderedHands.sort((Hand a, Hand b) {
       final double ax = a.landmarks.isNotEmpty ? a.landmarks.first.x : 0.0;
       final double bx = b.landmarks.isNotEmpty ? b.landmarks.first.x : 0.0;
       return ax.compareTo(bx);
     });
 
-    void writeHandFeatures(int slotIndex, Hand hand) {
-      final int base = 132 + (slotIndex * 63);
-      final int totalPoints = math.min(21, hand.landmarks.length);
+    Hand? leftHand;
+    Hand? rightHand;
 
-      for (int i = 0; i < totalPoints; i++) {
-        final int offset = base + (i * 3);
-        if (offset + 2 >= frame.length) {
-          break;
-        }
-
-        frame[offset] = hand.landmarks[i].x;
-        frame[offset + 1] = hand.landmarks[i].y;
-        frame[offset + 2] = hand.landmarks[i].z;
-      }
-    }
-
-    if (orderedHands.isNotEmpty) {
-      if (orderedHands.length == 1) {
-        final double wristX = orderedHands.first.landmarks.isNotEmpty
-            ? orderedHands.first.landmarks.first.x
-            : 0.5;
-        final int slotIndex = wristX < 0.5 ? 0 : 1;
-        writeHandFeatures(slotIndex, orderedHands.first);
+    if (orderedHands.length == 1) {
+      final Hand onlyHand = orderedHands.first;
+      final double handX = onlyHand.landmarks.isNotEmpty
+          ? onlyHand.landmarks.first.x
+          : 0.5;
+      if (handX < poseCenterX) {
+        leftHand = onlyHand;
       } else {
-        writeHandFeatures(0, orderedHands[0]);
-        writeHandFeatures(1, orderedHands[1]);
+        rightHand = onlyHand;
       }
+    } else if (orderedHands.length >= 2) {
+      leftHand = orderedHands.first;
+      rightHand = orderedHands.last;
     }
+
+    _writeHandFeatures(frame: frame, slotIndex: 0, hand: leftHand);
+    _writeHandFeatures(frame: frame, slotIndex: 1, hand: rightHand);
 
     return frame;
+  }
+
+  void _writePoseFeatures({
+    required List<double> frame,
+    required Pose? pose,
+    required int imageWidth,
+    required int imageHeight,
+  }) {
+    if (pose == null) {
+      return;
+    }
+
+    for (int i = 0; i < PoseLandmarkType.values.length; i++) {
+      final PoseLandmarkType type = PoseLandmarkType.values[i];
+      final PoseLandmark? landmark = pose.landmarks[type];
+      if (landmark == null) {
+        continue;
+      }
+
+      final int base = i * 4;
+      if (base + 3 >= 132) {
+        break;
+      }
+
+      frame[base] = imageWidth > 0 ? (landmark.x / imageWidth) : landmark.x;
+      frame[base + 1] = imageHeight > 0 ? (landmark.y / imageHeight) : landmark.y;
+      frame[base + 2] = landmark.z;
+      frame[base + 3] = landmark.likelihood;
+    }
+  }
+
+  void _writeHandFeatures({
+    required List<double> frame,
+    required int slotIndex,
+    required Hand? hand,
+  }) {
+    if (hand == null) {
+      return;
+    }
+
+    final int base = 132 + (slotIndex * 63);
+    final int totalPoints = math.min(21, hand.landmarks.length);
+
+    for (int i = 0; i < totalPoints; i++) {
+      final int offset = base + (i * 3);
+      if (offset + 2 >= frame.length) {
+        break;
+      }
+
+      frame[offset] = hand.landmarks[i].x;
+      frame[offset + 1] = hand.landmarks[i].y;
+      frame[offset + 2] = hand.landmarks[i].z;
+    }
+  }
+
+  double _poseCenterX(Pose? pose) {
+    if (pose == null) {
+      return 0.5;
+    }
+
+    final PoseLandmark? leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
+    final PoseLandmark? rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
+    if (leftShoulder != null && rightShoulder != null) {
+      return (leftShoulder.x + rightShoulder.x) / 2.0;
+    }
+
+    final PoseLandmark? leftHip = pose.landmarks[PoseLandmarkType.leftHip];
+    final PoseLandmark? rightHip = pose.landmarks[PoseLandmarkType.rightHip];
+    if (leftHip != null && rightHip != null) {
+      return (leftHip.x + rightHip.x) / 2.0;
+    }
+
+    final Iterable<PoseLandmark> landmarks = pose.landmarks.values;
+    if (landmarks.isEmpty) {
+      return 0.5;
+    }
+
+    final double sum = landmarks.fold<double>(0.0, (double acc, PoseLandmark landmark) {
+      return acc + landmark.x;
+    });
+    return sum / landmarks.length;
   }
 
   Hand _selectLikelyRightHand(List<Hand> hands) {
@@ -1498,8 +1661,14 @@ class ModelService {
         _landmarker = null;
       }
 
+      if (_poseDetector != null) {
+        await _poseDetector!.close();
+        _poseDetector = null;
+      }
+
       _isModelLoaded = false;
       _isRuntimeLoaded = false;
+      _sequenceBuffer.clear();
       _lastStatus = 'Disposed';
       _updateDebugInfo(
         stage: 'dispose',
