@@ -207,10 +207,8 @@ class ModelService {
   static const int _defaultInputSize = 64;
   static const int _defaultInputChannels = 3;
   static const int _defaultFeatureCount = 64;
-  static const String _modelAssetPath =
-      'assets/models/qualcomm_hand_gesture_classifier.tflite';
-  static const String _labelsAssetPath =
-      'assets/models/qualcomm_hand_gesture_labels.json';
+    static const String _modelAssetPath = 'assets/models/NF1.tflite';
+    static const String _labelsAssetPath = 'assets/models/NF1_labels.json';
   static const int _renderCanvasSize = 600;
   static const MethodChannel _modelChannel = MethodChannel('smartbridge/lstm');
 
@@ -299,7 +297,7 @@ class ModelService {
       }
 
       _isModelLoaded = true;
-      _lastStatus = 'Ready (Qualcomm MediaPipe gesture runtime)';
+      _lastStatus = 'Ready (NF1 gesture runtime)';
       _updateDebugInfo(
         stage: 'init',
         note: 'Model initialized successfully.',

@@ -59,8 +59,8 @@ The app is only accessible after checking the terms acceptance box.
   - `lib/services/model_service.dart`
   - `lib/services/permission_handler.dart`
 - Model assets:
-  - `assets/models/qualcomm_hand_gesture_classifier.tflite`
-  - `assets/models/qualcomm_hand_gesture_labels.json`
+  - `assets/models/NF1.tflite`
+    - `assets/models/NF1_labels.json`
 
 ## Run Commands
 

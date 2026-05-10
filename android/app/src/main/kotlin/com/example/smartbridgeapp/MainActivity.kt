@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
 
 			val modelAssetPath =
 				call.argument<String>("modelAssetPath")
-					?: "assets/models/qualcomm_hand_gesture_classifier.tflite"
+					?: "assets/models/NF1.tflite"
 			val numThreads = call.argument<Int>("numThreads") ?: 2
 
 			val modelBuffer = loadModelBuffer(modelAssetPath)
@@ -79,7 +79,7 @@ class MainActivity : FlutterActivity() {
 					"ok" to true,
 					"outputClasses" to outputClasses,
 					"inputShape" to inputShape.toList(),
-					"status" to "Qualcomm hand gesture classifier initialized",
+					"status" to "NF1 hand gesture classifier initialized",
 				),
 			)
 		} catch (e: Exception) {
