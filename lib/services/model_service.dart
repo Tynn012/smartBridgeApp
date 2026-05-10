@@ -207,8 +207,10 @@ class ModelService {
   static const int _defaultInputSize = 64;
   static const int _defaultInputChannels = 3;
   static const int _defaultFeatureCount = 64;
-    static const String _modelAssetPath = 'assets/models/NF1.tflite';
-    static const String _labelsAssetPath = 'assets/models/NF1_labels.json';
+  static const int _sequenceLength = 30;
+  static const int _sequenceFeatureCount = 258;
+  static const String _modelAssetPath = 'assets/models/model_float32.tflite';
+  static const String _labelsAssetPath = 'assets/models/labels.txt';
   static const int _renderCanvasSize = 600;
   static const MethodChannel _modelChannel = MethodChannel('smartbridge/lstm');
 
@@ -250,17 +252,26 @@ class ModelService {
   int _expectedInputElements = _defaultFeatureCount;
   bool _inputIsNchw = false;
   bool _usesLandmarkVectorInput = true;
+  bool _usesSequenceInput = false;
+  final List<List<double>> _sequenceBuffer = <List<double>>[];
   ModelDebugInfo _lastDebugInfo = ModelDebugInfo.initial();
 
   final List<String> _signLabels = [
-    'None',
-    'Closed_Fist',
-    'Open_Palm',
-    'Pointing_Up',
-    'Thumb_Down',
-    'Thumb_Up',
-    'Victory',
-    'ILoveYou',
+    'ako',
+    'bakit',
+    'F',
+    'hi',
+    'hindi',
+    'ikaw',
+    'kamusta',
+    'L',
+    'maganda',
+    'magandang umaga',
+    'N',
+    'O',
+    'oo',
+    'P',
+    'salamat',
   ];
 
   static const Set<String> _specialLabels = <String>{
@@ -290,6 +301,8 @@ class ModelService {
         delegate: HandLandmarkerDelegate.cpu,
       );
 
+      _sequenceBuffer.clear();
+
       await _initializeNativeModel();
 
       if (!_isRuntimeLoaded) {
@@ -297,7 +310,7 @@ class ModelService {
       }
 
       _isModelLoaded = true;
-      _lastStatus = 'Ready (NF1 gesture runtime)';
+      _lastStatus = 'Ready (Senyas FSL float32 runtime)';
       _updateDebugInfo(
         stage: 'init',
         note: 'Model initialized successfully.',
@@ -333,6 +346,12 @@ class ModelService {
       final List<String> labels;
       if (decoded is List) {
         labels = decoded.map((e) => e.toString()).toList();
+      } else if (decoded is String) {
+        labels = decoded
+            .split(RegExp(r'\r?\n'))
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
       } else if (decoded is Map<String, dynamic> && decoded['labels'] is List) {
         labels = (decoded['labels'] as List).map((e) => e.toString()).toList();
       } else {
@@ -365,7 +384,7 @@ class ModelService {
       if (_isRuntimeLoaded) {
         _lastStatus =
             (info['status'] as String?) ??
-            'Native Qualcomm gesture runtime initialized';
+            'Native Senyas FSL runtime initialized';
         _updateDebugInfo(
           stage: 'init',
           note: _lastStatus,
@@ -445,7 +464,9 @@ class ModelService {
     _modelInputChannels = channels.clamp(1, 4);
     _inputIsNchw = isNchw;
     _expectedInputElements = _computeExpectedInputElements(shape);
-    _usesLandmarkVectorInput = landmarkVectorInput;
+    _usesSequenceInput = shape.length == 3 &&
+      _expectedInputElements >= (_sequenceLength * _sequenceFeatureCount);
+    _usesLandmarkVectorInput = landmarkVectorInput && !_usesSequenceInput;
   }
 
   int _computeExpectedInputElements(List<int> shape) {
@@ -490,6 +511,7 @@ class ModelService {
       _lastDetectedHands = hands.length;
 
       if (hands.isEmpty) {
+        _sequenceBuffer.clear();
         _updateDebugInfo(
           stage: 'detect',
           note: 'No hand detected on frame.',
@@ -511,7 +533,25 @@ class ModelService {
       );
       SignPrediction? prediction;
 
-      if (_usesLandmarkVectorInput) {
+      if (_usesSequenceInput) {
+        final List<double> frameFeatures = _buildSenyasFrameFeatures(hands);
+        _sequenceBuffer.add(frameFeatures);
+        if (_sequenceBuffer.length > _sequenceLength) {
+          _sequenceBuffer.removeAt(0);
+        }
+
+        final List<double> sequenceInput = _buildSequenceInputTensor(
+          _sequenceBuffer,
+        );
+
+        prediction = await _runNativeAslInference(
+          sequenceInput,
+          detectedHands: hands.length,
+          selectedHandIndex: selectedHandIndex,
+          handBounds: handBounds,
+          inputStats: _computeTensorStats(sequenceInput),
+        );
+      } else if (_usesLandmarkVectorInput) {
         final List<double> handInput = _buildLandmarkFeatureInput(
           selectedHand.landmarks,
           mirrorX: false,
@@ -705,6 +745,72 @@ class ModelService {
     }
 
     return vector;
+  }
+
+  List<double> _buildSequenceInputTensor(List<List<double>> frames) {
+    final int frameCount = _sequenceLength;
+    final int featureCount = _sequenceFeatureCount;
+    final List<double> tensor = List<double>.filled(
+      frameCount * featureCount,
+      0.0,
+    );
+
+    final int startFrame = math.max(0, frameCount - frames.length);
+    for (int i = 0; i < frames.length; i++) {
+      final List<double> frame = frames[i];
+      final int offset = (startFrame + i) * featureCount;
+      final int copyLen = math.min(featureCount, frame.length);
+      for (int j = 0; j < copyLen; j++) {
+        tensor[offset + j] = frame[j];
+      }
+    }
+
+    return tensor;
+  }
+
+  List<double> _buildSenyasFrameFeatures(List<Hand> hands) {
+    final List<double> frame = List<double>.filled(
+      _sequenceFeatureCount,
+      0.0,
+    );
+
+    final List<Hand> orderedHands = List<Hand>.from(hands);
+    orderedHands.sort((Hand a, Hand b) {
+      final double ax = a.landmarks.isNotEmpty ? a.landmarks.first.x : 0.0;
+      final double bx = b.landmarks.isNotEmpty ? b.landmarks.first.x : 0.0;
+      return ax.compareTo(bx);
+    });
+
+    void writeHandFeatures(int slotIndex, Hand hand) {
+      final int base = 132 + (slotIndex * 63);
+      final int totalPoints = math.min(21, hand.landmarks.length);
+
+      for (int i = 0; i < totalPoints; i++) {
+        final int offset = base + (i * 3);
+        if (offset + 2 >= frame.length) {
+          break;
+        }
+
+        frame[offset] = hand.landmarks[i].x;
+        frame[offset + 1] = hand.landmarks[i].y;
+        frame[offset + 2] = hand.landmarks[i].z;
+      }
+    }
+
+    if (orderedHands.isNotEmpty) {
+      if (orderedHands.length == 1) {
+        final double wristX = orderedHands.first.landmarks.isNotEmpty
+            ? orderedHands.first.landmarks.first.x
+            : 0.5;
+        final int slotIndex = wristX < 0.5 ? 0 : 1;
+        writeHandFeatures(slotIndex, orderedHands.first);
+      } else {
+        writeHandFeatures(0, orderedHands[0]);
+        writeHandFeatures(1, orderedHands[1]);
+      }
+    }
+
+    return frame;
   }
 
   Hand _selectLikelyRightHand(List<Hand> hands) {

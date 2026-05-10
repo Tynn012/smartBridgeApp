@@ -59,8 +59,8 @@ The app is only accessible after checking the terms acceptance box.
   - `lib/services/model_service.dart`
   - `lib/services/permission_handler.dart`
 - Model assets:
-  - `assets/models/NF1.tflite`
-    - `assets/models/NF1_labels.json`
+  - `assets/models/model_float32.tflite`
+  - `assets/models/labels.txt`
 
 ## Run Commands
 

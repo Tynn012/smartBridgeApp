@@ -20,7 +20,7 @@ class MainActivity : FlutterActivity() {
 	}
 
 	private var edgeInterpreter: Interpreter? = null
-	private var outputClasses: Int = 8
+	private var outputClasses: Int = 15
 	private var inputShape: IntArray = intArrayOf(1, DEFAULT_INPUT_HEIGHT, DEFAULT_INPUT_WIDTH, DEFAULT_INPUT_CHANNELS)
 	private var inputType: DataType = DataType.FLOAT32
 	private var inputAuxType: DataType? = null
@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
 
 			val modelAssetPath =
 				call.argument<String>("modelAssetPath")
-					?: "assets/models/NF1.tflite"
+					?: "assets/models/model_float32.tflite"
 			val numThreads = call.argument<Int>("numThreads") ?: 2
 
 			val modelBuffer = loadModelBuffer(modelAssetPath)
@@ -79,7 +79,7 @@ class MainActivity : FlutterActivity() {
 					"ok" to true,
 					"outputClasses" to outputClasses,
 					"inputShape" to inputShape.toList(),
-					"status" to "NF1 hand gesture classifier initialized",
+					"status" to "Senyas FSL float32 classifier initialized",
 				),
 			)
 		} catch (e: Exception) {
